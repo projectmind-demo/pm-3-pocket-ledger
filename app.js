@@ -14,10 +14,36 @@ const dateText = (value) => { const [y, m, d] = value.split('-'); return `${y}�
 const category = (name) => categories.find((item) => item.name === name) || categories.at(-1);
 
 function loadRecords() {
-  try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); return Array.isArray(saved) ? saved : []; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return Array.isArray(saved) ? saved.map(normalizeRecord).filter(Boolean) : [];
+  }
   catch { return []; }
 }
-function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
+function normalizeRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const amount = Number(record.amount);
+  const date = typeof record.date === 'string' ? record.date : '';
+  const normalizedAmount = Math.round(amount * 100) / 100;
+  if (!Number.isFinite(amount) || !Number.isFinite(normalizedAmount) || amount <= 0 || !isValidDate(date)) return null;
+  return {
+    id: typeof record.id === 'string' && record.id ? record.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    amount: normalizedAmount,
+    category: categories.some((item) => item.name === record.category) ? record.category : '其他',
+    date,
+    note: typeof record.note === 'string' ? record.note.slice(0, 60) : '',
+    createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0
+  };
+}
+function isValidDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+function persist() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); return true; }
+  catch { showToast('记录无法保存，请检查浏览器存储权限。'); return false; }
+}
 function monthValue() { return $('monthFilter').value || today().slice(0, 7); }
 function showToast(message) { const toast = $('toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200); }
 
@@ -41,7 +67,8 @@ function render() {
 }
 function recordTemplate(record) {
   const item = category(record.category);
-  return `<article class="record-item"><div class="category-icon">${item.icon}</div><div class="record-main"><div class="record-name">${item.name}</div><div class="record-note">${escapeHtml(record.note || '未添加备注')}</div></div><div class="record-side"><div class="record-amount">${money(record.amount)}</div><div class="record-date">${dateText(record.date)}</div></div><div class="record-actions"><button class="text-button" data-action="edit" data-id="${record.id}" type="button">编辑</button><button class="text-button delete" data-action="delete" data-id="${record.id}" type="button">删除</button></div></article>`;
+  const id = escapeHtml(record.id);
+  return `<article class="record-item"><div class="category-icon">${item.icon}</div><div class="record-main"><div class="record-name">${escapeHtml(item.name)}</div><div class="record-note">${escapeHtml(record.note || '未添加备注')}</div></div><div class="record-side"><div class="record-amount">${money(record.amount)}</div><div class="record-date">${dateText(record.date)}</div></div><div class="record-actions"><button class="text-button" data-action="edit" data-id="${id}" type="button">编辑</button><button class="text-button delete" data-action="delete" data-id="${id}" type="button">删除</button></div></article>`;
 }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char])); }
 function openForm(record) {
@@ -53,8 +80,16 @@ function submitForm(event) {
   event.preventDefault(); const amount = Number($('amount').value); const chosen = document.querySelector('input[name="category"]:checked'); const message = $('formMessage');
   if (!amount || amount <= 0 || !Number.isFinite(amount)) { message.textContent = '请输入大于 0 的有效金额。'; message.className = 'form-message error'; $('amount').focus(); return; }
   if (!chosen) { message.textContent = '请选择一个消费分类。'; message.className = 'form-message error'; return; }
-  const data = { amount: Math.round(amount * 100) / 100, category: chosen.value, date: $('expenseDate').value || today(), note: $('note').value.trim(), createdAt: Date.now() };
-  if (editingId) { const index = records.findIndex((record) => record.id === editingId); records[index] = { ...records[index], ...data }; showToast('记录已更新'); }
+  const date = $('expenseDate').value || today();
+  if (!isValidDate(date)) { message.textContent = '请选择有效的消费日期。'; message.className = 'form-message error'; $('expenseDate').focus(); return; }
+  const normalizedAmount = Math.round(amount * 100) / 100;
+  if (!Number.isFinite(normalizedAmount)) { message.textContent = '请输入不超过合理范围的金额。'; message.className = 'form-message error'; $('amount').focus(); return; }
+  const data = { amount: normalizedAmount, category: chosen.value, date, note: $('note').value.trim().slice(0, 60), createdAt: Date.now() };
+  if (editingId) {
+    const index = records.findIndex((record) => record.id === editingId);
+    if (index === -1) { closeForm(); render(); showToast('记录不存在，可能已被删除。'); return; }
+    records[index] = { ...records[index], ...data }; showToast('记录已更新');
+  }
   else { records.push({ ...data, id: `${Date.now()}-${Math.random().toString(16).slice(2)}` }); showToast('记录保存成功'); }
   persist(); closeForm(); render();
 }
