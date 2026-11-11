@@ -73,7 +73,8 @@ function recordTemplate(record) {
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char])); }
 function openForm(record) {
   editingId = record?.id || null; $('formTitle').textContent = editingId ? '编辑记账' : '新增记账'; $('saveButton').textContent = editingId ? '保存修改' : '保存记录'; $('formMessage').className = 'form-message'; $('formMessage').textContent = '';
-  $('amount').value = record?.amount ?? ''; $('expenseDate').value = record?.date || today(); $('note').value = record?.note || ''; document.querySelectorAll('input[name="category"]').forEach((input) => { input.checked = input.value === record?.category; }); $('formModal').classList.remove('hidden'); setTimeout(() => { $('amount').focus(); $('amount').select(); }, 50);
+  $('amount').value = record?.amount ?? ''; $('expenseDate').value = record?.date || today(); $('note').value = record?.note || ''; document.querySelectorAll('input[name="category"]').forEach((input) => { input.checked = input.value === record?.category; }); $('formModal').classList.remove('hidden');
+  $('amount').focus(); $('amount').select();
 }
 function closeForm() { $('formModal').classList.add('hidden'); editingId = null; }
 function submitForm(event) {
