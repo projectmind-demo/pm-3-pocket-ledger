@@ -73,12 +73,12 @@ function recordTemplate(record) {
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char])); }
 function openForm(record) {
   editingId = record?.id || null; $('formTitle').textContent = editingId ? '编辑记账' : '新增记账'; $('saveButton').textContent = editingId ? '保存修改' : '保存记录'; $('formMessage').className = 'form-message'; $('formMessage').textContent = '';
-  $('amount').value = record?.amount ?? ''; $('expenseDate').value = record?.date || today(); $('note').value = record?.note || ''; document.querySelectorAll('input[name="category"]').forEach((input) => { input.checked = input.value === record?.category; }); $('formModal').classList.remove('hidden'); setTimeout(() => $('amount').focus(), 50);
+  $('amount').value = record?.amount ?? ''; $('expenseDate').value = record?.date || today(); $('note').value = record?.note || ''; document.querySelectorAll('input[name="category"]').forEach((input) => { input.checked = input.value === record?.category; }); $('formModal').classList.remove('hidden'); setTimeout(() => { $('amount').focus(); $('amount').select(); }, 50);
 }
 function closeForm() { $('formModal').classList.add('hidden'); editingId = null; }
 function submitForm(event) {
-  event.preventDefault(); const amount = Number($('amount').value); const chosen = document.querySelector('input[name="category"]:checked'); const message = $('formMessage');
-  if (!amount || amount <= 0 || !Number.isFinite(amount)) { message.textContent = '请输入大于 0 的有效金额。'; message.className = 'form-message error'; $('amount').focus(); return; }
+  event.preventDefault(); const rawAmount = $('amount').value.trim(); const amount = Number(rawAmount); const chosen = document.querySelector('input[name="category"]:checked'); const message = $('formMessage');
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(rawAmount) || !Number.isFinite(amount) || amount <= 0) { message.textContent = '请输入大于 0 的有效金额，最多保留两位小数。'; message.className = 'form-message error'; $('amount').focus(); return; }
   if (!chosen) { message.textContent = '请选择一个消费分类。'; message.className = 'form-message error'; return; }
   const date = $('expenseDate').value || today();
   if (!isValidDate(date)) { message.textContent = '请选择有效的消费日期。'; message.className = 'form-message error'; $('expenseDate').focus(); return; }
@@ -88,10 +88,16 @@ function submitForm(event) {
   if (editingId) {
     const index = records.findIndex((record) => record.id === editingId);
     if (index === -1) { closeForm(); render(); showToast('记录不存在，可能已被删除。'); return; }
-    records[index] = { ...records[index], ...data }; showToast('记录已更新');
+    const previous = records[index]; records[index] = { ...previous, ...data };
+    if (!persist()) { records[index] = previous; return; }
+    showToast('记录已更新');
   }
-  else { records.push({ ...data, id: `${Date.now()}-${Math.random().toString(16).slice(2)}` }); showToast('记录保存成功'); }
-  persist(); closeForm(); render();
+  else {
+    const next = { ...data, id: `${Date.now()}-${Math.random().toString(16).slice(2)}` }; records.push(next);
+    if (!persist()) { records.pop(); return; }
+    showToast('记录保存成功');
+  }
+  closeForm(); render();
 }
 
 renderCategories(); $('monthFilter').value = today().slice(0, 7); render();
