@@ -73,7 +73,8 @@
         <form id="expenseForm" novalidate>
           <label class="field amount-field">
             <span>消费金额 <em>*</em></span>
-            <div class="amount-input"><b>¥</b><input id="amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" /></div>
+            <div class="amount-input"><b>¥</b><input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="0.00" aria-describedby="amountHint" required /></div>
+            <small class="field-hint" id="amountHint">请输入大于 0 的金额，最多保留两位小数</small>
           </label>
           <fieldset class="field category-field">
             <legend>消费分类 <em>*</em></legend>
