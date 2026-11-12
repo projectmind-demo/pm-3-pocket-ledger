@@ -1,13 +1,8 @@
 {
-  "name": "pm-3-pocket-ledger",
+  "name": "projectmind-ledger",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "node scripts/migrate.mjs && node scripts/build.mjs",
-    "migrate": "node scripts/migrate.mjs",
-    "test": "node --test"
-  },
-  "dependencies": { "@libsql/client": "^0.15.9" },
-  "devDependencies": {}
+  "engines": { "node": ">=18" },
+  "scripts": { "build": "node scripts/build.mjs" }
 }
