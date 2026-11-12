@@ -19,7 +19,16 @@ export default async function handler(req, res) {
       return send(res, 200, { entries: result.rows });
     }
     if (req.method === 'POST') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      let body;
+      if (typeof req.body === 'string') {
+        try {
+          body = JSON.parse(req.body) || {};
+        } catch {
+          return send(res, 400, { error: '请求体 JSON 格式无效。' });
+        }
+      } else {
+        body = req.body || {};
+      }
       const date = body.date;
       const description = typeof body.description === 'string' ? body.description.trim() : '';
       const amount = typeof body.amount === 'string' ? Number(body.amount) : body.amount;
@@ -29,7 +38,8 @@ export default async function handler(req, res) {
       if (description.length > 100) return send(res, 400, { error: '说明最多 100 个字符。' });
       if (!Number.isFinite(amount) || amount <= 0) return send(res, 400, { error: '金额必须是大于 0 的数字。' });
       if (!['income', 'expense'].includes(type)) return send(res, 400, { error: '类型必须是 income 或 expense。' });
-      const normalizedAmount = Math.round(amount * 100) / 100;
+      const roundedAmount = Math.round(amount * 100) / 100;
+      const normalizedAmount = roundedAmount > 0 ? roundedAmount : amount;
       if (!Number.isFinite(normalizedAmount)) return send(res, 400, { error: '金额格式无效。' });
       const entry = { id: randomUUID(), date, description, amount: normalizedAmount, type, createdAt: Date.now() };
       await db.execute({ sql: 'INSERT INTO entries (id, date, description, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?)', args: [entry.id, entry.date, entry.description, entry.amount, entry.type, entry.createdAt] });
