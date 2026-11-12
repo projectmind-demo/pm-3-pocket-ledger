@@ -1,109 +1,21 @@
-const STORAGE_KEY = 'pocket-ledger-records-v1';
-const categories = [
-  { name: '餐饮', icon: '🍜' }, { name: '交通', icon: '🚌' }, { name: '购物', icon: '🛍️' },
-  { name: '住房', icon: '🏠' }, { name: '娱乐', icon: '🎬' }, { name: '医疗', icon: '💊' }, { name: '其他', icon: '📦' }
-];
-let records = loadRecords();
-let editingId = null;
-let selectedDate = '';
-
+const state = { entries: [], filter: 'all' };
 const $ = (id) => document.getElementById(id);
-const today = () => { const now = new Date(); const offset = now.getTimezoneOffset(); return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10); };
-const money = (value) => `¥${Number(value).toFixed(2)}`;
-const dateText = (value) => { const [y, m, d] = value.split('-'); return `${y}年${Number(m)}月${Number(d)}日`; };
-const category = (name) => categories.find((item) => item.name === name) || categories.at(-1);
-
-function loadRecords() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(saved) ? saved.map(normalizeRecord).filter(Boolean) : [];
-  }
-  catch { return []; }
-}
-function normalizeRecord(record) {
-  if (!record || typeof record !== 'object') return null;
-  const amount = Number(record.amount);
-  const date = typeof record.date === 'string' ? record.date : '';
-  const normalizedAmount = Math.round(amount * 100) / 100;
-  if (!Number.isFinite(amount) || !Number.isFinite(normalizedAmount) || amount <= 0 || !isValidDate(date)) return null;
-  return {
-    id: typeof record.id === 'string' && record.id ? record.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    amount: normalizedAmount,
-    category: categories.some((item) => item.name === record.category) ? record.category : '其他',
-    date,
-    note: typeof record.note === 'string' ? record.note.slice(0, 60) : '',
-    createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0
-  };
-}
-function isValidDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-function persist() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); return true; }
-  catch { showToast('记录无法保存，请检查浏览器存储权限。'); return false; }
-}
-function monthValue() { return $('monthFilter').value || today().slice(0, 7); }
-function showToast(message) { const toast = $('toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200); }
-
-function renderCategories() {
-  $('categoryOptions').innerHTML = categories.map((item) => `<div class="category-option"><input type="radio" id="cat-${item.name}" name="category" value="${item.name}"><label for="cat-${item.name}"><span>${item.icon}</span>${item.name}</label></div>`).join('');
-}
-function render() {
-  const current = today(); const month = monthValue();
-  $('todayLabel').textContent = dateText(current);
-  const todayRecords = records.filter((record) => record.date === current);
-  $('todayTotal').textContent = Number(todayRecords.reduce((sum, record) => sum + record.amount, 0)).toFixed(2);
-  $('todayCount').textContent = todayRecords.length ? `${todayRecords.length} 笔消费记录` : '今天还没有记录';
-  const monthRecords = records.filter((record) => record.date.startsWith(month));
-  const monthSum = monthRecords.reduce((sum, record) => sum + record.amount, 0);
-  $('monthTotal').textContent = money(monthSum); $('monthCount').textContent = `${monthRecords.length} 笔记录`;
-  const days = new Set(monthRecords.map((record) => record.date)).size;
-  $('averageTotal').textContent = money(days ? monthSum / days : 0); $('averageHint').textContent = days ? `按 ${days} 个有记录日计算` : '按有记录天数计算';
-  const visible = selectedDate ? records.filter((record) => record.date === selectedDate) : [...records].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 8);
-  $('clearFilter').classList.toggle('hidden', !selectedDate);
-  $('recordList').innerHTML = visible.length ? visible.map(recordTemplate).join('') : `<div class="empty-state"><div class="empty-icon">＋</div><strong>${selectedDate ? '这一天还没有记录' : '还没有消费记录'}</strong><p>${selectedDate ? '换个日期看看，或新增一笔消费。' : '记录第一笔消费，开始掌握自己的日常开支。'}</p></div>`;
-}
-function recordTemplate(record) {
-  const item = category(record.category);
-  const id = escapeHtml(record.id);
-  return `<article class="record-item"><div class="category-icon">${item.icon}</div><div class="record-main"><div class="record-name">${escapeHtml(item.name)}</div><div class="record-note">${escapeHtml(record.note || '未添加备注')}</div></div><div class="record-side"><div class="record-amount">${money(record.amount)}</div><div class="record-date">${dateText(record.date)}</div></div><div class="record-actions"><button class="text-button" data-action="edit" data-id="${id}" type="button">编辑</button><button class="text-button delete" data-action="delete" data-id="${id}" type="button">删除</button></div></article>`;
-}
-function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char])); }
-function openForm(record) {
-  editingId = record?.id || null; $('formTitle').textContent = editingId ? '编辑记账' : '新增记账'; $('saveButton').textContent = editingId ? '保存修改' : '保存记录'; $('formMessage').className = 'form-message'; $('formMessage').textContent = '';
-  $('amount').value = record?.amount ?? ''; $('expenseDate').value = record?.date || today(); $('note').value = record?.note || ''; document.querySelectorAll('input[name="category"]').forEach((input) => { input.checked = input.value === record?.category; }); $('formModal').classList.remove('hidden');
-  $('amount').focus(); $('amount').select();
-}
-function closeForm() { $('formModal').classList.add('hidden'); editingId = null; }
-function submitForm(event) {
-  event.preventDefault(); const rawAmount = $('amount').value.trim(); const amount = Number(rawAmount); const chosen = document.querySelector('input[name="category"]:checked'); const message = $('formMessage');
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(rawAmount) || !Number.isFinite(amount) || amount <= 0) { message.textContent = '请输入大于 0 的有效金额，最多保留两位小数。'; message.className = 'form-message error'; $('amount').focus(); return; }
-  if (!chosen) { message.textContent = '请选择一个消费分类。'; message.className = 'form-message error'; return; }
-  const date = $('expenseDate').value || today();
-  if (!isValidDate(date)) { message.textContent = '请选择有效的消费日期。'; message.className = 'form-message error'; $('expenseDate').focus(); return; }
-  const normalizedAmount = Math.round(amount * 100) / 100;
-  if (!Number.isFinite(normalizedAmount)) { message.textContent = '请输入不超过合理范围的金额。'; message.className = 'form-message error'; $('amount').focus(); return; }
-  const data = { amount: normalizedAmount, category: chosen.value, date, note: $('note').value.trim().slice(0, 60), createdAt: Date.now() };
-  if (editingId) {
-    const index = records.findIndex((record) => record.id === editingId);
-    if (index === -1) { closeForm(); render(); showToast('记录不存在，可能已被删除。'); return; }
-    const previous = records[index]; records[index] = { ...previous, ...data };
-    if (!persist()) { records[index] = previous; return; }
-    showToast('记录已更新');
-  }
-  else {
-    const next = { ...data, id: `${Date.now()}-${Math.random().toString(16).slice(2)}` }; records.push(next);
-    if (!persist()) { records.pop(); return; }
-    showToast('记录保存成功');
-  }
-  closeForm(); render();
-}
-
-renderCategories(); $('monthFilter').value = today().slice(0, 7); render();
-$('openAdd').addEventListener('click', () => openForm()); $('closeModal').addEventListener('click', closeForm); $('expenseForm').addEventListener('submit', submitForm); $('monthFilter').addEventListener('change', render);
-$('dateFilter').addEventListener('change', (event) => { selectedDate = event.target.value; render(); }); $('clearFilter').addEventListener('click', () => { selectedDate = ''; $('dateFilter').value = ''; render(); });
-$('formModal').addEventListener('click', (event) => { if (event.target === $('formModal')) closeForm(); });
-$('recordList').addEventListener('click', (event) => { const button = event.target.closest('[data-action]'); if (!button) return; const record = records.find((item) => item.id === button.dataset.id); if (!record) return; if (button.dataset.action === 'edit') openForm(record); else if (confirm(`确定删除这笔 ${money(record.amount)} 的${record.category}记录吗？`)) { records = records.filter((item) => item.id !== record.id); persist(); render(); showToast('记录已删除'); } });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('formModal').classList.contains('hidden')) closeForm(); });
+const today = () => new Date().toLocaleDateString('en-CA');
+const formatMoney = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatDate = (value) => { const [year, month, day] = value.split('-'); return `${year}年${Number(month)}月${Number(day)}日`; };
+const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+function showToast(message, type = '') { const toast = $('toast'); toast.textContent = message; toast.className = `toast show ${type}`; clearTimeout(showToast.timer); showToast.timer = setTimeout(() => { toast.className = 'toast'; }, 2600); }
+function setLoading(isLoading) { $('loadingState').classList.toggle('hidden', !isLoading); $('recordList').classList.toggle('hidden', isLoading); }
+function filteredEntries() { const list = [...state.entries].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt); return state.filter === 'all' ? list : list.filter((entry) => entry.type === state.filter); }
+function renderSummary() { const income = state.entries.filter((entry) => entry.type === 'income').reduce((sum, entry) => sum + Number(entry.amount), 0); const expense = state.entries.filter((entry) => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount), 0); $('incomeTotal').textContent = formatMoney(income); $('expenseTotal').textContent = formatMoney(expense); $('balanceTotal').textContent = formatMoney(income - expense); $('entryCount').textContent = `${state.entries.length} 笔记录`; }
+function renderList() { const entries = filteredEntries(); $('recordCount').textContent = `${entries.length} 笔`; $('recordList').innerHTML = entries.length ? entries.map((entry) => `<article class="record-item"><div class="record-date-badge"><span>${entry.date.slice(5, 7)}</span><strong>${entry.date.slice(8)}</strong></div><div class="record-main"><strong>${escapeHtml(entry.description)}</strong><span>${formatDate(entry.date)}</span></div><div class="record-amount ${entry.type}">${entry.type === 'income' ? '+' : '-'}${formatMoney(entry.amount)}</div><button class="delete-button" type="button" data-delete="${escapeHtml(entry.id)}" aria-label="删除 ${escapeHtml(entry.description)}">删除</button></article>`).join('') : `<div class="empty-state"><div class="empty-mark">∅</div><strong>还没有${state.filter === 'all' ? '' : state.filter === 'income' ? '收入' : '支出'}记录</strong><p>点击右上角“新增记录”，开始整理你的现金流。</p></div>`; }
+function render() { renderSummary(); renderList(); }
+async function loadEntries() { setLoading(true); try { const response = await fetch('/api/entries'); const data = await response.json(); if (!response.ok) throw new Error(data.error || '记录加载失败'); state.entries = data.entries || []; render(); } catch (error) { $('recordList').innerHTML = `<div class="empty-state error-state"><strong>暂时无法加载记录</strong><p>${escapeHtml(error.message)}</p><button class="retry-button" type="button" id="retryButton">重新加载</button></div>`; renderSummary(); $('retryButton')?.addEventListener('click', loadEntries); } finally { setLoading(false); } }
+function openForm() { $('entryForm').reset(); $('entryDate').value = today(); $('entryType').value = 'expense'; $('formMessage').textContent = ''; $('formMessage').className = 'form-message'; $('formModal').classList.remove('hidden'); $('entryDescription').focus(); }
+function closeForm() { $('formModal').classList.add('hidden'); }
+async function submitEntry(event) { event.preventDefault(); const form = event.currentTarget; const submitButton = $('saveButton'); const message = $('formMessage'); const payload = { date: $('entryDate').value, description: $('entryDescription').value.trim(), amount: $('entryAmount').value.trim(), type: $('entryType').value }; submitButton.disabled = true; message.textContent = ''; try { const response = await fetch('/api/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || '保存失败'); state.entries.unshift(data.entry); closeForm(); render(); showToast('记录已保存'); form.reset(); } catch (error) { message.textContent = error.message; message.className = 'form-message error'; } finally { submitButton.disabled = false; } }
+async function deleteEntry(id) { if (!window.confirm('确定删除这条记录吗？')) return; try { const response = await fetch(`/api/entries?id=${encodeURIComponent(id)}`, { method: 'DELETE' }); const data = await response.json(); if (!response.ok) throw new Error(data.error || '删除失败'); state.entries = state.entries.filter((entry) => entry.id !== id); render(); showToast('记录已删除'); } catch (error) { showToast(error.message, 'error'); } }
+$('todayLabel').textContent = formatDate(today());
+$('openAdd').addEventListener('click', openForm); $('closeModal').addEventListener('click', closeForm); $('formModal').addEventListener('click', (event) => { if (event.target === $('formModal')) closeForm(); }); $('entryForm').addEventListener('submit', submitEntry); $('recordList').addEventListener('click', (event) => { const button = event.target.closest('[data-delete]'); if (button) deleteEntry(button.dataset.delete); });
+document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => { state.filter = button.dataset.filter; document.querySelectorAll('[data-filter]').forEach((item) => item.classList.toggle('active', item === button)); renderList(); }));
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeForm(); }); loadEntries();
